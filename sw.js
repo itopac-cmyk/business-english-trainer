@@ -1,4 +1,4 @@
-const SHELL = "be-trainer-shell-v3";
+const SHELL = "be-trainer-shell-v4";
 const AUDIO = "be-trainer-audio-v1";
 
 const PRECACHE = [
@@ -7,9 +7,12 @@ const PRECACHE = [
   "./manifest.json",
   "./css/styles.css",
   "./js/content.js",
+  "./js/path-data.js",
   "./js/storage.js",
   "./js/audio-manifest.js",
   "./js/audio.js",
+  "./js/sfx.js",
+  "./js/learn.js",
   "./js/app.js",
   "./fonts/carlito-regular.woff",
   "./fonts/carlito-bold.woff",
