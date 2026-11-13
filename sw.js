@@ -1,4 +1,4 @@
-const SHELL = "be-trainer-shell-v2";
+const SHELL = "be-trainer-shell-v3";
 const AUDIO = "be-trainer-audio-v1";
 
 const PRECACHE = [
@@ -19,7 +19,7 @@ const PRECACHE = [
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/maskable-512.png",
+  "./icons/icon-maskable-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -61,9 +61,8 @@ self.addEventListener("fetch", (event) => {
       try {
         const res = await fetch(req);
         if (res && res.ok) {
-          const copy = res.clone();
           const cache = await caches.open(AUDIO);
-          cache.put(req, copy);
+          cache.put(req, res.clone());
         }
         return res;
       } catch (err) {
@@ -76,8 +75,6 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith((async () => {
-    const cached = await caches.match(req);
-    if (cached) return cached;
     try {
       const res = await fetch(req);
       if (res && res.ok && new URL(req.url).origin === self.location.origin) {
@@ -86,8 +83,8 @@ self.addEventListener("fetch", (event) => {
       }
       return res;
     } catch (err) {
+      const cached = await caches.match(req);
       if (cached) return cached;
-      /* SPA fallback: serve the shell for navigations */
       if (req.mode === "navigate") {
         const shell = await caches.match("./index.html");
         if (shell) return shell;
