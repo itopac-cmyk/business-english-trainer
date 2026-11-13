@@ -169,10 +169,10 @@
       </div>` : "");
 
     const tiles = [
-      { href: "#/vocab", emoji: "💬", bg: "var(--teal-soft)", title: "Vokabeln", text: "3 Themenpakete, Karteikarten mit Audio", pct: avg(CONTENT.packs.map((p) => packStats(p).pct)) },
-      { href: "#/grammar", emoji: "✍️", bg: "#e8eef2", title: "Grammatik", text: "5 Kapitel mit kurzen Erklärungen", pct: avg(CONTENT.grammar.map(grammarPct)) },
-      { href: "#/cases", emoji: "💼", bg: "var(--gold-soft)", title: "Business Cases", text: "Mails, Vorstellung, Projekte, Beratung", pct: avg(CONTENT.cases.map(casePct)) },
-      { href: "#/exam", emoji: "📋", bg: "#ece8f5", title: "Prüfung", text: "20 Fragen, 12 Minuten, wie ein Theoriebogen", pct: lastExamPct() },
+      { href: "#/vocab", emoji: "💬", bg: "var(--teal-soft)", title: "Vokabeln", text: `${CONTENT.packs.length} Themenpakete, Karteikarten mit Audio`, pct: avg(CONTENT.packs.map((p) => packStats(p).pct)) },
+      { href: "#/grammar", emoji: "✍️", bg: "#e8eef2", title: "Grammatik", text: `${CONTENT.grammar.length} Kapitel mit kurzen Erklärungen`, pct: avg(CONTENT.grammar.map(grammarPct)) },
+      { href: "#/cases", emoji: "💼", bg: "var(--gold-soft)", title: "Business Cases", text: "Mails, Audits, Calls, Verhandlung", pct: avg(CONTENT.cases.map(casePct)) },
+      { href: "#/exam", emoji: "📋", bg: "#ece8f5", title: "Prüfung", text: "Schnelltest oder Vollprüfung, wie ein Theoriebogen", pct: lastExamPct() },
     ];
 
     const mistakes = st.mistakes.length;
@@ -352,7 +352,7 @@
     });
     document.getElementById("say-term").addEventListener("click", (e) => {
       e.stopPropagation();
-      AudioEng.speak(s.flipped ? `${w.term}. ${w.example}` : w.term);
+      AudioEng.speak(s.flipped ? w.example : w.term);
     });
     const again = document.getElementById("btn-again");
     const known = document.getElementById("btn-known");
@@ -542,26 +542,49 @@
         return `<button class="${cls}" data-choice="${i}" ${locked ? "disabled" : ""}><span class="key">${String.fromCharCode(65 + i)}</span>${esc(opt)}</button>`;
       }).join("")}</div>`;
     } else if (ex.type === "gap") {
+      const freeText = !!(Store.get().settings || {}).freeText;
+      const hasChips = Array.isArray(ex.options) && ex.options.length;
       const val = last ? last.user : "";
       const cls = locked ? (last.ok ? "correct" : "wrong") : "";
-      body = `<input class="gap-input ${cls}" id="gap" type="text" lang="en" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="${esc(ex.placeholder || "Antwort eingeben")}" value="${esc(val)}" ${locked ? "disabled" : ""}>
-        ${locked ? "" : `<div class="btn-row"><button class="btn" id="check-gap">Prüfen</button></div>`}`;
+      if (hasChips && !freeText) {
+        body = `<div class="chip-row">${ex.options.map((opt) => {
+          let c = "chip";
+          if (locked && last) {
+            const okHit = (ex.accept || []).map(norm).includes(norm(opt));
+            if (okHit) c += " correct";
+            else if (norm(last.user) === norm(opt) && !last.ok) c += " wrong";
+          } else if (val && norm(val) === norm(opt)) {
+            c += " selected";
+          }
+          return `<button type="button" class="${c}" data-chip="${esc(opt)}" ${locked ? "disabled" : ""}>${esc(opt)}</button>`;
+        }).join("")}</div>
+        ${locked ? "" : `<div class="chip-tools"><button type="button" id="toggle-freetext">Freitext üben</button></div>`}`;
+      } else {
+        body = `<input class="gap-input ${cls}" id="gap" type="text" lang="en" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="${esc(ex.placeholder || "Antwort eingeben")}" value="${esc(val)}" ${locked ? "disabled" : ""}>
+        ${locked ? "" : `<div class="btn-row"><button class="btn" id="check-gap">Prüfen</button></div>
+        ${hasChips ? `<div class="chip-tools"><button type="button" id="toggle-freetext">Stattdessen antippen</button></div>` : ""}`}`;
+      }
     } else if (ex.type === "order") {
       if (!session.order || session.order.exId !== ex.id) {
-        let order = shuffle(ex.items.map((_, i) => i));
-        if (JSON.stringify(order) === JSON.stringify(ex.answer)) order = shuffle(order);
-        session.order = { exId: ex.id, order };
+        let pool = shuffle(ex.items.map((_, i) => i));
+        if (JSON.stringify(pool) === JSON.stringify(ex.answer)) pool = shuffle(pool);
+        session.order = { exId: ex.id, pool, seq: [] };
       }
-      const cur = locked && last ? last.user : session.order.order;
-      body = `<div class="order-list">${cur.map((orig, pos) => `
-        <div class="order-item">
-          <div class="txt">${esc(ex.items[orig])}</div>
-          ${locked ? "" : `<div class="movers">
-            <button type="button" data-up="${pos}" aria-label="Nach oben">▴</button>
-            <button type="button" data-down="${pos}" aria-label="Nach unten">▾</button>
-          </div>`}
-        </div>`).join("")}</div>
-        ${locked ? "" : `<div class="btn-row"><button class="btn" id="check-order">Prüfen</button></div>`}`;
+      const seq = locked && last && Array.isArray(last.user) ? last.user : session.order.seq;
+      const pool = locked ? [] : session.order.pool;
+      body = `<p class="order-hint">Tippe die Teile in der richtigen Reihenfolge an. Du kannst sie danach noch verschieben.</p>
+        <div class="order-seq">${seq.map((orig, pos) => `
+          <div class="order-item ${locked ? "" : "tap"}" ${locked ? "" : `data-unpick="${pos}"`}>
+            <span class="num">${pos + 1}</span>
+            <div class="txt">${esc(ex.items[orig])}</div>
+            ${locked ? "" : `<div class="movers">
+              <button type="button" data-up="${pos}" aria-label="Nach oben">▴</button>
+              <button type="button" data-down="${pos}" aria-label="Nach unten">▾</button>
+            </div>`}
+          </div>`).join("")}</div>
+        ${locked ? "" : `<div class="order-pool">${pool.map((orig, pos) => `
+          <button type="button" class="order-pick" data-pick="${pos}">${esc(ex.items[orig])}</button>`).join("")}</div>
+        <div class="btn-row"><button class="btn" id="check-order" ${seq.length !== ex.items.length ? "disabled" : ""}>Prüfen</button></div>`}`;
     }
 
     let fb = "";
@@ -592,26 +615,60 @@
       });
     }
     if (!locked && ex.type === "gap") {
+      $app().querySelectorAll("[data-chip]").forEach((btn) => {
+        btn.addEventListener("click", () => cfg.onCheck(btn.getAttribute("data-chip")));
+      });
       const input = document.getElementById("gap");
-      const go = () => cfg.onCheck(input.value);
-      document.getElementById("check-gap").addEventListener("click", go);
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
-      setTimeout(() => input.focus(), 50);
+      const check = document.getElementById("check-gap");
+      if (input && check) {
+        const go = () => cfg.onCheck(input.value);
+        check.addEventListener("click", go);
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+        setTimeout(() => input.focus(), 50);
+      }
+      const tog = document.getElementById("toggle-freetext");
+      if (tog) {
+        tog.addEventListener("click", () => {
+          const cur = !!(Store.get().settings || {}).freeText;
+          Store.setSetting("freeText", !cur);
+          renderExercisePage(cfg);
+        });
+      }
     }
     if (!locked && ex.type === "order") {
-      $app().querySelectorAll("[data-up]").forEach((b) => b.addEventListener("click", () => moveOrder(Number(b.getAttribute("data-up")), -1, cfg)));
-      $app().querySelectorAll("[data-down]").forEach((b) => b.addEventListener("click", () => moveOrder(Number(b.getAttribute("data-down")), 1, cfg)));
-      document.getElementById("check-order").addEventListener("click", () => cfg.onCheck(session.order.order.slice()));
+      $app().querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => pickOrder(Number(b.getAttribute("data-pick")), cfg)));
+      $app().querySelectorAll("[data-unpick]").forEach((b) => {
+        b.addEventListener("click", (e) => {
+          if (e.target.closest("[data-up], [data-down]")) return;
+          unpickOrder(Number(b.getAttribute("data-unpick")), cfg);
+        });
+      });
+      $app().querySelectorAll("[data-up]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); moveOrder(Number(b.getAttribute("data-up")), -1, cfg); }));
+      $app().querySelectorAll("[data-down]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); moveOrder(Number(b.getAttribute("data-down")), 1, cfg); }));
+      const chk = document.getElementById("check-order");
+      if (chk) chk.addEventListener("click", () => cfg.onCheck(session.order.seq.slice()));
     }
     const next = document.getElementById("next-ex");
     if (next) next.addEventListener("click", () => { session.order = null; cfg.onNext(); });
   }
 
   function moveOrder(pos, dir, cfg) {
-    const arr = session.order.order;
+    const arr = session.order.seq;
     const to = pos + dir;
     if (to < 0 || to >= arr.length) return;
     [arr[pos], arr[to]] = [arr[to], arr[pos]];
+    renderExercisePage(cfg);
+  }
+
+  function pickOrder(pos, cfg) {
+    const item = session.order.pool.splice(pos, 1)[0];
+    session.order.seq.push(item);
+    renderExercisePage(cfg);
+  }
+
+  function unpickOrder(pos, cfg) {
+    const item = session.order.seq.splice(pos, 1)[0];
+    session.order.pool.push(item);
     renderExercisePage(cfg);
   }
 
@@ -703,7 +760,12 @@
           ${lines.map((ln, i) => {
             const who = ln.speaker || (c.model.kind === "email" ? "Mail" : "Isa");
             const cls = (ln.speaker === "Isa" || (!ln.speaker && c.model.kind !== "dialogue")) ? "isa" : "";
-            return `<div class="bubble ${cls}" data-line="${i}">${ln.speaker || c.model.kind === "email" ? `<div class="who">${esc(who)}</div>` : ""}<p>${esc(ln.text)}</p></div>`;
+            const voiceWho = ln.speaker || (c.model.kind === "dialogue" ? "" : "Isa");
+            return `<div class="bubble ${cls}" data-line="${i}">
+              <button type="button" class="speaker sm" data-say="${esc(ln.text)}" data-speaker="${esc(voiceWho)}" aria-label="Diesen Satz anhören">${I.speaker}</button>
+              ${ln.speaker || c.model.kind === "email" ? `<div class="who">${esc(who)}</div>` : ""}
+              <p>${esc(ln.text)}</p>
+            </div>`;
           }).join("")}
         </div>
       </div>
@@ -713,6 +775,7 @@
       const prev = Store.caseProgress(id);
       Store.caseSave(id, { ...prev, modelHeard: true });
       AudioEng.speakLines(lines, {
+        caseId: c.id,
         online(i) {
           document.querySelectorAll(".bubble").forEach((el) => el.classList.toggle("active", Number(el.getAttribute("data-line")) === i));
           const el = document.querySelector(`.bubble[data-line="${i}"]`);
@@ -789,25 +852,39 @@
       <div class="page">
         <div class="card" style="padding:18px 16px">
           <h2 style="margin:0 0 8px">Theoriebogen</h2>
-          <p style="margin:0 0 8px">20 gemischte Fragen aus Vokabeln, Grammatik und Business Cases. Du hast 12 Minuten. Die Auswertung kommt am Ende – wie in der Fahrschule.</p>
-          <p style="margin:0;color:var(--muted)">Bestehen ab 16 richtigen Antworten (80&nbsp;%).</p>
+          <p style="margin:0 0 8px">Gemischte Fragen aus Vokabeln, Grammatik und Business Cases – alles per Antippen, ohne Tastatur. Die Auswertung kommt am Ende, wie in der Fahrschule.</p>
+          <p style="margin:0;color:var(--muted)">Bestehen ab 80&nbsp;% richtigen Antworten. Der Fragenpool hat ${CONTENT.exam.length} Aufgaben, jeder Durchgang ist neu gemischt.</p>
         </div>
-        ${last ? `<div class="card goal-card" style="margin-top:14px"><div class="goal-head"><strong>Letzte Prüfung</strong><span>${last.score} / ${last.total}</span></div>${pctBar((last.score / last.total) * 100, last.score >= 16 ? "" : "")}<p style="margin:8px 0 0;color:var(--muted);font-size:.85rem">${last.passed ? "Bestanden" : "Nicht bestanden"}</p></div>` : ""}
-        <div class="btn-row"><button class="btn" id="start-exam">Prüfung starten</button></div>
+        ${last ? `<div class="card goal-card" style="margin-top:14px"><div class="goal-head"><strong>Letzte Prüfung</strong><span>${last.score} / ${last.total}</span></div>${pctBar((last.score / last.total) * 100)}<p style="margin:8px 0 0;color:var(--muted);font-size:.85rem">${last.passed ? "Bestanden" : "Nicht bestanden"}</p></div>` : ""}
+        <div class="mode-cards">
+          <button type="button" class="mode-card" id="start-exam-10">
+            <h3>Schnelltest</h3>
+            <p>10 Fragen, 6 Minuten, Bestehen ab 8 richtigen Antworten.</p>
+          </button>
+          <button type="button" class="mode-card" id="start-exam-20">
+            <h3>Vollprüfung</h3>
+            <p>20 Fragen, 12 Minuten, Bestehen ab 16 richtigen Antworten.</p>
+          </button>
+        </div>
       </div>
       ${tabbar("more")}`;
-    document.getElementById("start-exam").addEventListener("click", startExam);
+    document.getElementById("start-exam-10").addEventListener("click", () => startExam(10));
+    document.getElementById("start-exam-20").addEventListener("click", () => startExam(20));
   }
 
-  function startExam() {
+  function startExam(n) {
+    const total = n === 10 ? 10 : 20;
+    const seconds = total === 10 ? 6 * 60 : 12 * 60;
     const pool = shuffle(CONTENT.exam.slice());
-    const questions = pool.slice(0, 20);
+    const questions = pool.slice(0, total);
     session.exam = {
       questions,
       index: 0,
       answers: Array(questions.length).fill(null),
       startedAt: Date.now(),
-      remaining: 12 * 60,
+      duration: seconds,
+      remaining: seconds,
+      passScore: Math.ceil(total * 0.8),
       tick: null,
       submitted: false,
     };
@@ -821,7 +898,7 @@
     const s = session.exam;
     if (!s || s.submitted) return;
     const elapsed = Math.floor((Date.now() - s.startedAt) / 1000);
-    s.remaining = Math.max(0, 12 * 60 - elapsed);
+    s.remaining = Math.max(0, (s.duration || 12 * 60) - elapsed);
     const el = document.getElementById("exam-timer");
     if (el) {
       el.textContent = formatTime(s.remaining);
@@ -848,6 +925,11 @@
         <button class="choice ${Number(chosen) === i ? "selected" : ""}" data-choice="${i}">
           <span class="key">${String.fromCharCode(65 + i)}</span>${esc(opt)}
         </button>`).join("")}</div>`;
+    } else if (ex.type === "gap" && Array.isArray(ex.options) && ex.options.length) {
+      body = `<div class="chip-row">${ex.options.map((opt) => {
+        const on = chosen != null && norm(chosen) === norm(opt);
+        return `<button type="button" class="chip ${on ? "selected" : ""}" data-chip="${esc(opt)}">${esc(opt)}</button>`;
+      }).join("")}</div>`;
     } else {
       body = `<input class="gap-input" id="gap" type="text" lang="en" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="${esc(ex.placeholder || "Antwort eingeben")}" value="${esc(chosen || "")}">`;
     }
@@ -874,10 +956,19 @@
           renderExamRun();
         });
       });
+    } else if (ex.type === "gap" && Array.isArray(ex.options) && ex.options.length) {
+      $app().querySelectorAll("[data-chip]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          s.answers[s.index] = btn.getAttribute("data-chip");
+          renderExamRun();
+        });
+      });
     } else {
       const input = document.getElementById("gap");
-      input.addEventListener("input", () => { s.answers[s.index] = input.value; });
-      setTimeout(() => input.focus(), 50);
+      if (input) {
+        input.addEventListener("input", () => { s.answers[s.index] = input.value; });
+        setTimeout(() => input.focus(), 50);
+      }
     }
     const prev = document.getElementById("exam-prev");
     const next = document.getElementById("exam-next");
@@ -927,7 +1018,7 @@
     review.forEach((r) => {
       if (!r.ok) weak[r.ex.area] = (weak[r.ex.area] || 0) + 1;
     });
-    const passed = score >= 16;
+    const passed = score >= (s.passScore || Math.ceil(s.questions.length * 0.8));
     Store.addExam({
       date: Date.now(),
       score,
@@ -994,7 +1085,7 @@
       ${topbar("Mehr", { back: "#/", noback: false })}
       <div class="page">
         <div class="list-card card">
-          <a class="list-row" href="#/exam"><div class="avatar" style="background:#ece8f5">📋</div><div class="meta"><h3>Prüfungsmodus</h3><p>20 Fragen in 12 Minuten</p></div><span class="chev">›</span></a>
+          <a class="list-row" href="#/exam"><div class="avatar" style="background:#ece8f5">📋</div><div class="meta"><h3>Prüfungsmodus</h3><p>Schnelltest (10) oder Vollprüfung (20)</p></div><span class="chev">›</span></a>
           <a class="list-row" href="#/progress"><div class="avatar" style="background:var(--teal-soft)">📊</div><div class="meta"><h3>Fortschritt</h3><p>Statistik, Serie und Kapitel</p></div><span class="chev">›</span></a>
           <a class="list-row" href="#/mistakes"><div class="avatar" style="background:var(--danger-soft)">🐞</div><div class="meta"><h3>Fehlerbox</h3><p>Fehler gezielt wiederholen</p></div>${n ? `<span class="badge danger">${n}</span>` : ""}<span class="chev">›</span></a>
           <a class="list-row" href="#/settings"><div class="avatar" style="background:#e8eef2">⚙️</div><div class="meta"><h3>Einstellungen</h3><p>Stimme, Tagesziel, Hinweise</p></div><span class="chev">›</span></a>
@@ -1174,7 +1265,7 @@
       b.addEventListener("click", () => { Store.setSetting("goal", Number(b.getAttribute("data-goal"))); renderSettings(); });
     });
     document.getElementById("test-voice").addEventListener("click", () => {
-      AudioEng.speak("Good morning. I am looking forward to working with you on the Cyber Resilience Act project.");
+      AudioEng.speak(CONTENT.testPhrase);
     });
     document.getElementById("reset-all").addEventListener("click", () => {
       if (confirm("Wirklich den gesamten Lernfortschritt löschen?")) {
@@ -1237,7 +1328,7 @@
     const say = e.target.closest("[data-say]");
     if (say) {
       e.preventDefault();
-      AudioEng.speak(say.getAttribute("data-say"));
+      AudioEng.speak(say.getAttribute("data-say"), { speaker: say.getAttribute("data-speaker") || "Isa" });
     }
   });
 
