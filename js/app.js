@@ -42,16 +42,24 @@
   }
 
   function isCorrect(ex, user) {
-    if (ex.type === "mc") return Number(user) === Number(ex.answer);
+    if (ex.type === "mc" || ex.type === "listen") return Number(user) === Number(ex.answer);
     if (ex.type === "gap") return (ex.accept || []).map(norm).includes(norm(user));
     if (ex.type === "order") return JSON.stringify(user) === JSON.stringify(ex.answer);
+    if (ex.type === "build" || ex.type === "listen-build") {
+      const built = Array.isArray(user) ? user.join(" ") : String(user || "");
+      const accept = (ex.accept || []).concat([(ex.tokens || []).join(" ")]);
+      return accept.map(norm).includes(norm(built));
+    }
+    if (ex.type === "match") return !!(user && user.complete);
     return false;
   }
 
   function correctLabel(ex) {
-    if (ex.type === "mc") return ex.options[ex.answer];
-    if (ex.type === "gap") return ex.accept[0];
+    if (ex.type === "mc" || ex.type === "listen") return (ex.options || [])[ex.answer];
+    if (ex.type === "gap") return (ex.accept || [])[0];
     if (ex.type === "order") return (ex.answer || []).map((i) => ex.items[i]).join(" → ");
+    if (ex.type === "build" || ex.type === "listen-build") return (ex.tokens || []).join(" ");
+    if (ex.type === "match") return (ex.pairs || []).map((p) => p.left + " – " + p.right).join("; ");
     return "";
   }
 
@@ -151,77 +159,7 @@
 
   /* ---------- HOME ---------- */
   function renderHome() {
-    const st = Store.get();
-    const goal = st.settings.goal || 15;
-    const done = st.daily.count || 0;
-    const goalPct = Math.min(100, (done / goal) * 100);
-    const hideInstall = isStandalone() || session.hideInstall || localStorage.getItem("be-hide-install") === "1";
-    const install = !hideInstall && isIOS() ? `
-      <div class="install-hint" id="install-hint">
-        <button type="button" id="hide-install" aria-label="Hinweis schließen">✕</button>
-        <strong>Auf den Home-Bildschirm</strong>
-        In Safari auf Teilen tippen und „Zum Home-Bildschirm“ wählen. Danach startet die App wie eine normale App.
-      </div>` : (!hideInstall && !isStandalone() ? `
-      <div class="install-hint" id="install-hint">
-        <button type="button" id="hide-install" aria-label="Hinweis schließen">✕</button>
-        <strong>Als App nutzen</strong>
-        Im Browser das Menü öffnen und die Seite auf dem Startbildschirm bzw. als App installieren.
-      </div>` : "");
-
-    const tiles = [
-      { href: "#/vocab", emoji: "💬", bg: "var(--teal-soft)", title: "Vokabeln", text: `${CONTENT.packs.length} Themenpakete, Karteikarten mit Audio`, pct: avg(CONTENT.packs.map((p) => packStats(p).pct)) },
-      { href: "#/grammar", emoji: "✍️", bg: "#e8eef2", title: "Grammatik", text: `${CONTENT.grammar.length} Kapitel mit kurzen Erklärungen`, pct: avg(CONTENT.grammar.map(grammarPct)) },
-      { href: "#/cases", emoji: "💼", bg: "var(--gold-soft)", title: "Business Cases", text: "Mails, Audits, Calls, Verhandlung", pct: avg(CONTENT.cases.map(casePct)) },
-      { href: "#/exam", emoji: "📋", bg: "#ece8f5", title: "Prüfung", text: "Schnelltest oder Vollprüfung, wie ein Theoriebogen", pct: lastExamPct() },
-    ];
-
-    const mistakes = st.mistakes.length;
-    const last = st.lastRoute && st.lastRoute !== "#/" ? st.lastRoute : null;
-
-    $app().innerHTML = `
-      ${topbar("Business English", { noback: true, sub: "Beratung & CRA", right: `<span class="timer" style="background:rgba(255,255,255,.12)">${st.streak.current || 0} 🔥</span>` })}
-      <div class="page">
-        <p class="greet">${greeting()}, ${esc(CONTENT.userName)}</p>
-        <p class="date-line">${esc(formatDate(new Date()))}</p>
-        ${install}
-        <div class="row">
-          <div class="stat-chip"><span class="emoji">🔥</span><div><span class="lbl">Serie</span><span class="val">${st.streak.current || 0} Tage</span></div></div>
-          <div class="stat-chip"><span class="emoji">🏆</span><div><span class="lbl">Beste Serie</span><span class="val">${st.streak.best || 0} Tage</span></div></div>
-        </div>
-        <div class="card goal-card">
-          <div class="goal-head"><strong>Tagesziel</strong><span>${done} / ${goal}</span></div>
-          ${pctBar(goalPct, done >= goal ? "gold" : "")}
-        </div>
-        <div class="grid-2">
-          ${tiles.map((t) => `
-            <a class="tile" href="${t.href}">
-              <div class="tile-emoji" style="background:${t.bg}">${t.emoji}</div>
-              <h2>${t.title}</h2>
-              <p>${t.text}</p>
-              <div class="mini-bar">${pctBar(t.pct)}</div>
-            </a>`).join("")}
-        </div>
-        ${mistakes ? `<a class="nav-row card" href="#/mistakes" style="margin-top:16px;border-radius:16px">
-          <div class="avatar" style="background:var(--danger-soft)">🐞</div>
-          <div class="meta"><h3>Fehlerbox</h3><p>${mistakes} ${mistakes === 1 ? "Eintrag" : "Einträge"} zum Wiederholen</p></div>
-          <span class="badge danger">${mistakes}</span><span class="chev">›</span>
-        </a>` : ""}
-        ${last ? `<a class="nav-row card" href="${esc(last)}" style="margin-top:10px;border-radius:16px">
-          <div class="avatar" style="background:#e8eef2">▶️</div>
-          <div class="meta"><h3>Weiterlernen</h3><p>Dort weitermachen, wo du aufgehört hast</p></div>
-          <span class="chev">›</span>
-        </a>` : ""}
-        <p class="footer-note">Gesamtfortschritt ${overallProgress()}&nbsp;%</p>
-      </div>
-      ${tabbar("home")}`;
-
-    const hide = document.getElementById("hide-install");
-    if (hide) hide.addEventListener("click", () => {
-      localStorage.setItem("be-hide-install", "1");
-      session.hideInstall = true;
-      const el = document.getElementById("install-hint");
-      if (el) el.remove();
-    });
+    LearnUI.renderHome();
   }
 
   function avg(arr) {
@@ -611,12 +549,20 @@
 
     if (!locked && ex.type === "mc") {
       $app().querySelectorAll("[data-choice]").forEach((btn) => {
-        btn.addEventListener("click", () => cfg.onCheck(Number(btn.getAttribute("data-choice"))));
+        btn.addEventListener("click", () => {
+          const user = Number(btn.getAttribute("data-choice"));
+          if (isCorrect(ex, user)) Sfx.correct(); else Sfx.wrong();
+          cfg.onCheck(user);
+        });
       });
     }
     if (!locked && ex.type === "gap") {
       $app().querySelectorAll("[data-chip]").forEach((btn) => {
-        btn.addEventListener("click", () => cfg.onCheck(btn.getAttribute("data-chip")));
+        btn.addEventListener("click", () => {
+          const user = btn.getAttribute("data-chip");
+          if (isCorrect(ex, user)) Sfx.correct(); else Sfx.wrong();
+          cfg.onCheck(user);
+        });
       });
       const input = document.getElementById("gap");
       const check = document.getElementById("check-gap");
@@ -1085,10 +1031,12 @@
       ${topbar("Mehr", { back: "#/", noback: false })}
       <div class="page">
         <div class="list-card card">
+          <a class="list-row" href="#/"><div class="avatar" style="background:var(--gold-soft)">🗺️</div><div class="meta"><h3>Lernpfad</h3><p>Einheiten, Lektionen und tägliche Quests</p></div><span class="chev">›</span></a>
+          <a class="list-row" href="#/boost"><div class="avatar" style="background:var(--danger-soft)">🔧</div><div class="meta"><h3>Schwachstellen-Boost</h3><p>Fehler ausbügeln und Herzen zurückholen</p></div>${n ? `<span class="badge danger">${n}</span>` : ""}<span class="chev">›</span></a>
           <a class="list-row" href="#/exam"><div class="avatar" style="background:#ece8f5">📋</div><div class="meta"><h3>Prüfungsmodus</h3><p>Schnelltest (10) oder Vollprüfung (20)</p></div><span class="chev">›</span></a>
-          <a class="list-row" href="#/progress"><div class="avatar" style="background:var(--teal-soft)">📊</div><div class="meta"><h3>Fortschritt</h3><p>Statistik, Serie und Kapitel</p></div><span class="chev">›</span></a>
+          <a class="list-row" href="#/progress"><div class="avatar" style="background:var(--teal-soft)">📊</div><div class="meta"><h3>Fortschritt</h3><p>XP, Rang, Statistik und Kapitel</p></div><span class="chev">›</span></a>
           <a class="list-row" href="#/mistakes"><div class="avatar" style="background:var(--danger-soft)">🐞</div><div class="meta"><h3>Fehlerbox</h3><p>Fehler gezielt wiederholen</p></div>${n ? `<span class="badge danger">${n}</span>` : ""}<span class="chev">›</span></a>
-          <a class="list-row" href="#/settings"><div class="avatar" style="background:#e8eef2">⚙️</div><div class="meta"><h3>Einstellungen</h3><p>Stimme, Tagesziel, Hinweise</p></div><span class="chev">›</span></a>
+          <a class="list-row" href="#/settings"><div class="avatar" style="background:#e8eef2">⚙️</div><div class="meta"><h3>Einstellungen</h3><p>Stimme, Töne, Fokus-Modus, Ziele</p></div><span class="chev">›</span></a>
         </div>
       </div>
       ${tabbar("more")}`;
@@ -1102,11 +1050,12 @@
       <div class="page">
         <div class="row">
           <div class="stat-chip"><span class="emoji">🔥</span><div><span class="lbl">Serie</span><span class="val">${st.streak.current || 0} Tage</span></div></div>
-          <div class="stat-chip"><span class="emoji">🎯</span><div><span class="lbl">Heute</span><span class="val">${st.daily.count || 0} / ${st.settings.goal}</span></div></div>
+          <div class="stat-chip"><span class="emoji">⚡</span><div><span class="lbl">XP heute</span><span class="val">${(st.xp && st.xp.today) || 0} / ${st.settings.xpGoal || 50}</span></div></div>
         </div>
         <div class="card goal-card">
-          <div class="goal-head"><strong>Gesamtfortschritt</strong><span>${overallProgress()}&nbsp;%</span></div>
+          <div class="goal-head"><strong>${esc((Store.rankFor((st.xp && st.xp.total) || 0).emoji + " " + Store.rankFor((st.xp && st.xp.total) || 0).title))}</strong><span>${((st.xp && st.xp.total) || 0).toLocaleString("de-DE")} XP</span></div>
           ${pctBar(overallProgress())}
+          <p style="margin:8px 0 0;color:var(--muted);font-size:.85rem">Themenfortschritt ${overallProgress()}&nbsp;%</p>
         </div>
         <p class="section-title">Vokabeln</p>
         <div class="list-card card">${CONTENT.packs.map((p) => {
@@ -1159,6 +1108,8 @@
   function startMistakePractice() {
     const list = Store.get().mistakes.slice();
     if (!list.length) return renderMistakes();
+    const mixed = list.some((m) => /^(build|listen|listen-build|match)$/.test(m.type));
+    if (mixed) return LearnUI.startBoost();
     session.mistakes = { queue: shuffle(list), index: 0, locked: false, last: null };
     renderMistakePractice();
   }
@@ -1241,7 +1192,29 @@
           <div class="btn-row"><button class="btn secondary" id="test-voice">Stimme testen</button></div>
         </div>
         <div class="settings-group">
-          <h3>Tagesziel</h3>
+          <h3>Töne</h3>
+          <div class="seg" id="sound-seg">
+            <button type="button" data-sound="on" class="${st.settings.sound !== false ? "on" : ""}">An</button>
+            <button type="button" data-sound="off" class="${st.settings.sound === false ? "on" : ""}">Aus</button>
+          </div>
+          <p class="date-line">Kurze Hinweise bei richtigen und falschen Antworten. Lässt sich jederzeit stummschalten.</p>
+        </div>
+        <div class="settings-group">
+          <h3>Fokus-Modus (Herzen)</h3>
+          <div class="seg" id="challenge-seg">
+            <button type="button" data-challenge="off" class="${!st.settings.challenge ? "on" : ""}">Standard</button>
+            <button type="button" data-challenge="on" class="${st.settings.challenge ? "on" : ""}">Fokus</button>
+          </div>
+          <p class="date-line">Im Fokus-Modus startest du mit 5 Herzen. Bei Fehlern verlierst du eines – du wirst aber nicht ausgesperrt. Herzen holst du über den Schwachstellen-Boost zurück. Jeden Tag werden sie neu aufgefüllt.</p>
+        </div>
+        <div class="settings-group">
+          <h3>Tagesziel (XP)</h3>
+          <div class="seg" id="xpgoal-seg">
+            ${[30, 50, 80, 120].map((n) => `<button type="button" data-xpgoal="${n}" class="${(st.settings.xpGoal || 50) === n ? "on" : ""}">${n}</button>`).join("")}
+          </div>
+        </div>
+        <div class="settings-group">
+          <h3>Aufgaben-Tagesziel</h3>
           <div class="seg" id="goal-seg">
             ${[10, 15, 20, 30].map((n) => `<button type="button" data-goal="${n}" class="${goal === n ? "on" : ""}">${n}</button>`).join("")}
           </div>
@@ -1261,6 +1234,15 @@
     document.querySelectorAll("#voice-seg button").forEach((b) => {
       b.addEventListener("click", () => { Store.setSetting("voice", b.getAttribute("data-voice")); AudioEng.refresh(); renderSettings(); });
     });
+    document.querySelectorAll("#sound-seg button").forEach((b) => {
+      b.addEventListener("click", () => { Store.setSetting("sound", b.getAttribute("data-sound") !== "off"); renderSettings(); });
+    });
+    document.querySelectorAll("#challenge-seg button").forEach((b) => {
+      b.addEventListener("click", () => { Store.setSetting("challenge", b.getAttribute("data-challenge") === "on"); renderSettings(); });
+    });
+    document.querySelectorAll("#xpgoal-seg button").forEach((b) => {
+      b.addEventListener("click", () => { Store.setSetting("xpGoal", Number(b.getAttribute("data-xpgoal"))); renderSettings(); });
+    });
     document.querySelectorAll("#goal-seg button").forEach((b) => {
       b.addEventListener("click", () => { Store.setSetting("goal", Number(b.getAttribute("data-goal"))); renderSettings(); });
     });
@@ -1275,9 +1257,17 @@
     });
   }
 
+  /* ---------- LEARN UI ---------- */
+  LearnUI.setup({
+    esc, shuffle, norm, blankify, tabbar, topbar, I, session,
+    isCorrect, correctLabel, areaName, pctBar, greeting, formatDate,
+    isIOS, isStandalone, packStats, overallProgress, lastExamPct,
+  });
+
   /* ---------- ROUTER ---------- */
   function route() {
     AudioEng.stop();
+    Sfx.unlock();
     if (session.exam && session.exam.tick && !session.exam.submitted) {
       const next = (location.hash || "#/").replace(/^#/, "") || "/";
       if (!next.startsWith("/exam")) {
@@ -1297,6 +1287,15 @@
     const b = parts[1];
     const c = parts[2];
     if (!a) return renderHome();
+    if (a === "lesson" && b) {
+      if (session.lesson && session.lesson.id === b) return LearnUI.renderLesson();
+      return LearnUI.openLesson(b);
+    }
+    if (a === "boost" && b === "run") {
+      if (session.lesson && session.lesson.isBoost) return LearnUI.renderLesson();
+      return LearnUI.startBoost();
+    }
+    if (a === "boost") return LearnUI.startBoost();
     if (a === "vocab" && !b) return renderVocabList();
     if (a === "vocab" && b && c === "train") return startVocabTrain(b);
     if (a === "vocab" && b) return renderVocabPack(b);
