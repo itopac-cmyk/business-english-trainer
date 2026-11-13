@@ -1335,7 +1335,15 @@
   window.addEventListener("hashchange", route);
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register("./sw.js", { scope: "./" }).then((reg) => {
+      reg.update().catch(() => {});
+    }).catch(() => {});
   }
 
   route();
