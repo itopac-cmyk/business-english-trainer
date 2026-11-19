@@ -91,6 +91,14 @@
     a.playsInline = true;
     a.preload = "auto";
     current = a;
+    const rate = opts.rate || 1;
+    a.defaultPlaybackRate = rate;
+    a.playbackRate = rate;
+    if ("preservesPitch" in a) a.preservesPitch = true;
+    a.onloadedmetadata = function () {
+      try { a.playbackRate = rate; } catch (err) { /* ignore */ }
+      if (opts.onmeta) opts.onmeta(a.duration / rate);
+    };
     a.onended = function () {
       if (current === a) current = null;
       markPlaying(false);
@@ -122,7 +130,7 @@
     } catch (err) { /* ignore */ }
     const u = new SpeechSynthesisUtterance(text);
     u.lang = locale() === "en-US" ? "en-US" : "en-GB";
-    u.rate = 0.95;
+    u.rate = 0.95 * (opts.rate || 1);
     /* On iOS, assigning an unavailable voice object often yields silence. Use lang only. */
     if (!ios) {
       const want = locale() === "en-US" ? "en-US" : "en-GB";
@@ -156,6 +164,8 @@
     const url = lookup(voice, text);
     if (url) {
       playUrl(url, {
+        rate: opts.rate,
+        onmeta: opts.onmeta,
         onend: opts.onend,
         onerror: function () { speakFallback(text, opts); },
       });
