@@ -1,13 +1,13 @@
 {
   "name": "Business English",
   "short_name": "BE Trainer",
-  "description": "Business-Englisch für Beratung und CRA: Vokabeln, Grammatik, Cases und Prüfung.",
+  "description": "Business-Englisch für Beratung und CRA: tägliche Session, Kunden-Simulator und Prüfung.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0E2A3D",
-  "theme_color": "#0E2A3D",
+  "background_color": "#F8FAFC",
+  "theme_color": "#F8FAFC",
   "lang": "de",
   "icons": [
     {
